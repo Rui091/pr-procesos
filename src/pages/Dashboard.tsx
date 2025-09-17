@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import CreateTestUsers from '../components/CreateTestUsers'
 import RoleSwitcher from '../components/RoleSwitcher'
+import { StockNotificationSettings, NotificationDemo } from '../components/notifications'
 
 const DashboardPage: React.FC = () => {
   const { hasPermission } = useAuth()
@@ -96,8 +97,18 @@ const DashboardPage: React.FC = () => {
             <CreateTestUsers />
             <RoleSwitcher />
           </div>
+          
+          {/* Demo de notificaciones solo para admin */}
+          <div className="mt-8">
+            <NotificationDemo />
+          </div>
         </div>
       )}
+
+      {/* Panel de notificaciones de stock */}
+      <div className="mt-12">
+        <StockNotificationSettings />
+      </div>
     </div>
   )
 }

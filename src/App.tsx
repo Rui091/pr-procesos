@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { NotificationProvider } from './contexts/NotificationContext'
 import { ProtectedRoute } from './components/auth'
 import { Login } from './components/auth'
 import { Layout } from './components/layout'
@@ -46,8 +47,9 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <SessionManager>
-          <BrowserRouter>
+        <NotificationProvider>
+          <SessionManager>
+            <BrowserRouter>
             <div className="min-h-screen bg-gray-100">
               <Routes>
                 {/* Ruta pública */}
@@ -88,6 +90,7 @@ function App() {
             </div>
           </BrowserRouter>
         </SessionManager>
+        </NotificationProvider>
       </AuthProvider>
     </ErrorBoundary>
   )

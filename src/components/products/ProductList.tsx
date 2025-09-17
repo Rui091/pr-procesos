@@ -1,7 +1,9 @@
 // src/components/products/ProductList.tsx
 import React, { useState } from 'react'
 import { useProducts } from '../../hooks/useProducts'
+import { useStockAlerts } from '../../hooks/useStockAlerts'
 import { useAuth } from '../../contexts/AuthContext'
+import { STOCK_ALERT_COLORS, STOCK_ALERT_TYPES } from '../../utils/constants'
 import type { Producto } from '../../lib/database.types'
 
 interface ProductListProps {
@@ -19,6 +21,7 @@ const ProductList: React.FC<ProductListProps> = ({
 }) => {
   const { hasPermission } = useAuth()
   const { products, loading, error, deleteProduct, searchProducts } = useProducts()
+  const { getStockAlertType, getMessageForType } = useStockAlerts(products)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
   // Productos filtrados por búsqueda
@@ -170,14 +173,22 @@ const ProductList: React.FC<ProductListProps> = ({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-100">
-            {filteredProducts.map((product: Producto) => (
-              <tr 
-                key={product.id} 
-                className={`border-b border-gray-200 hover:bg-gray-50 transition-colors duration-200 ${selectable ? 'cursor-pointer hover:shadow-sm' : ''} ${
-                  product.stock <= 5 ? 'bg-yellow-50 border-l-4 border-yellow-400' : ''
-                }`}
-                onClick={() => selectable && onSelectProduct?.(product)}
-              >
+            {filteredProducts.map((product: Producto) => {
+              const stockAlert = getStockAlertType(product.stock || 0)
+              const alertMessage = getMessageForType(stockAlert)
+              const alertColors = STOCK_ALERT_COLORS[stockAlert]
+              const isLowStock = stockAlert !== STOCK_ALERT_TYPES.NORMAL
+              
+              return (
+                <tr 
+                  key={product.id} 
+                  className={`border-b border-gray-200 hover:bg-gray-50 transition-colors duration-200 ${
+                    selectable ? 'cursor-pointer hover:shadow-sm' : ''
+                  } ${
+                    isLowStock ? `${alertColors.bg} border-l-4 ${alertColors.border.replace('border-', 'border-l-')}` : ''
+                  }`}
+                  onClick={() => selectable && onSelectProduct?.(product)}
+                >
                 <td className="px-6 py-4 text-sm text-gray-900">
                   <div className="flex items-center">
                     <div className="flex-shrink-0 w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center mr-3">
@@ -199,21 +210,32 @@ const ProductList: React.FC<ProductListProps> = ({
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-900">
                   <div className="flex items-center">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                      product.stock > 10 
-                        ? 'bg-green-100 text-green-800' 
-                        : product.stock > 5 
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : product.stock > 0
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${alertColors.badge}`}>
                       {product.stock > 0 ? `${product.stock} unidades` : 'Sin stock'}
                     </span>
-                    {product.stock <= 5 && product.stock > 0 && (
-                      <svg className="w-4 h-4 ml-2 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
-                      </svg>
+                    {isLowStock && (
+                      <div className="ml-2 flex items-center">
+                        {stockAlert === STOCK_ALERT_TYPES.CRITICAL && (
+                          <svg className={`w-4 h-4 ${alertColors.icon}`} fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        {stockAlert === STOCK_ALERT_TYPES.LOW && (
+                          <svg className={`w-4 h-4 ${alertColors.icon}`} fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        {stockAlert === STOCK_ALERT_TYPES.WARNING && (
+                          <svg className={`w-4 h-4 ${alertColors.icon}`} fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        <span className={`ml-1 text-xs ${alertColors.text} font-medium`} title={alertMessage}>
+                          {stockAlert === STOCK_ALERT_TYPES.CRITICAL && 'Crítico'}
+                          {stockAlert === STOCK_ALERT_TYPES.LOW && 'Bajo'}
+                          {stockAlert === STOCK_ALERT_TYPES.WARNING && 'Advertencia'}
+                        </span>
+                      </div>
                     )}
                   </div>
                 </td>
@@ -281,7 +303,8 @@ const ProductList: React.FC<ProductListProps> = ({
                   </div>
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

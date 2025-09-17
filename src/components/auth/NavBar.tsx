@@ -1,6 +1,7 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { StockNotificationBadge } from '../notifications'
 import SessionStatusIndicator from '../SessionStatusIndicator'
 
 const NavBar: React.FC = () => {
@@ -78,6 +79,11 @@ const NavBar: React.FC = () => {
           {/* Menú de usuario */}
           <div className="flex items-center">
             <div className="flex items-center space-x-4">
+              {/* Badge de notificaciones de stock */}
+              <StockNotificationBadge 
+                onClick={() => window.location.href = '/inventory'}
+              />
+              
               {/* Indicador de estado de sesión */}
               <SessionStatusIndicator />
               
