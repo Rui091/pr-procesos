@@ -1,11 +1,18 @@
 // src/components/sales/SaleForm.tsx
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useSales, type VentaFormItem } from '../../hooks/useSales'
 import { useProducts } from '../../hooks/useProducts'
 import { useCustomers } from '../../hooks/useCustomers'
 import { useStockValidation } from '../../hooks/useStockValidation'
+import { usePromotions, type Promocion } from '../../hooks/usePromotions'
 import { formatCurrency } from '../../utils/formatters'
 import type { Producto, Cliente } from '../../lib/database.types'
+
+interface VentaFormItemWithPromotion extends VentaFormItem {
+  precio_original?: number
+  descuento_unitario?: number
+  promocion_aplicada?: Promocion
+}
 
 interface SaleFormProps {
   onSuccess?: () => void
@@ -14,7 +21,7 @@ interface SaleFormProps {
 
 const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
   const [selectedCustomer, setSelectedCustomer] = useState<Cliente | null>(null)
-  const [items, setItems] = useState<VentaFormItem[]>([])
+  const [items, setItems] = useState<VentaFormItemWithPromotion[]>([])
   const [productSearchQuery, setProductSearchQuery] = useState('')
   const [customerSearchQuery, setCustomerSearchQuery] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -27,16 +34,47 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
   const { products, searchProducts } = useProducts()
   const { customers, searchCustomers, createCustomer, refreshCustomers } = useCustomers()
   const { validateStock } = useStockValidation()
+  const { getPromocionesByProducto, calcularDescuento } = usePromotions()
 
   // Productos filtrados para búsqueda
   const filteredProducts = productSearchQuery ? searchProducts(productSearchQuery) : []
   const filteredCustomers = customerSearchQuery ? searchCustomers(customerSearchQuery) : customers
 
-  // Calcular totales
+  // Calcular totales con descuentos
+  const subtotalSinDescuentos = items.reduce((acc, item) => 
+    acc + (item.cantidad * (item.precio_original || item.precio_unitario)), 0)
+  const totalDescuentos = items.reduce((acc, item) => 
+    acc + (item.cantidad * (item.descuento_unitario || 0)), 0)
   const totalItems = items.reduce((acc, item) => acc + item.cantidad, 0)
-  const totalVenta = items.reduce((acc, item) => acc + (item.cantidad * item.precio_unitario), 0)
+  const totalVenta = subtotalSinDescuentos - totalDescuentos
 
-  const handleProductSelect = (product: Producto) => {
+  // Función para aplicar promociones a un item
+  const aplicarPromociones = async (producto: Producto, cantidad: number): Promise<VentaFormItemWithPromotion> => {
+    const promociones = await getPromocionesByProducto(producto.id)
+    
+    let mejorPromocion: Promocion | null = null
+    let mejorDescuento = { descuentoUnitario: 0, descuentoTotal: 0 }
+    
+    // Encontrar la mejor promoción aplicable
+    for (const promocion of promociones) {
+      const descuento = calcularDescuento(producto.precio, cantidad, promocion)
+      if (descuento.descuentoTotal > mejorDescuento.descuentoTotal) {
+        mejorPromocion = promocion
+        mejorDescuento = descuento
+      }
+    }
+    
+    return {
+      producto_id: producto.id,
+      cantidad,
+      precio_unitario: producto.precio - (mejorDescuento.descuentoUnitario || 0),
+      precio_original: producto.precio,
+      descuento_unitario: mejorDescuento.descuentoUnitario || 0,
+      promocion_aplicada: mejorPromocion || undefined
+    }
+  }
+
+  const handleProductSelect = async (product: Producto) => {
     setProductSearchQuery('')
     
     // Verificar si ya existe el producto en los items
@@ -54,7 +92,9 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
         return
       }
       
-      newItems[existingItemIndex].cantidad = newQuantity
+      // Aplicar promociones con la nueva cantidad
+      const itemActualizado = await aplicarPromociones(product, newQuantity)
+      newItems[existingItemIndex] = itemActualizado
       setItems(newItems)
     } else {
       // Validar stock para nuevo producto
@@ -64,12 +104,9 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
         return
       }
       
-      // Agregar nuevo producto
-      setItems([...items, {
-        producto_id: product.id,
-        cantidad: 1,
-        precio_unitario: product.precio
-      }])
+      // Crear nuevo item con promociones aplicadas
+      const nuevoItem = await aplicarPromociones(product, 1)
+      setItems([...items, nuevoItem])
     }
     
     setError(null)
@@ -78,6 +115,32 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
   const handleCustomerSelect = (customer: Cliente) => {
     setSelectedCustomer(customer)
     setCustomerSearchQuery('')
+  }
+
+  const handleQuantityChange = async (itemIndex: number, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      handleRemoveItem(itemIndex)
+      return
+    }
+
+    const item = items[itemIndex]
+    const product = products.find(p => p.id === item.producto_id)
+    
+    if (!product) return
+
+    // Validar stock
+    const validation = validateStock(product.id, newQuantity)
+    if (!validation.isValid) {
+      setError(validation.message)
+      return
+    }
+
+    // Aplicar promociones con la nueva cantidad
+    const itemActualizado = await aplicarPromociones(product, newQuantity)
+    const newItems = [...items]
+    newItems[itemIndex] = itemActualizado
+    setItems(newItems)
+    setError(null)
   }
 
   // Función para crear cliente rápido
@@ -147,9 +210,16 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
     setError(null)
     
     try {
+      // Convertir items con promociones al formato requerido
+      const itemsParaVenta: VentaFormItem[] = items.map(item => ({
+        producto_id: item.producto_id,
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario
+      }))
+
       const result = await createSale({
         cliente_id: selectedCustomer?.id || null,
-        items
+        items: itemsParaVenta
       })
       
       if (!result.success) {
@@ -381,6 +451,9 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
                       Cantidad
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Descuento
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                       Subtotal
                     </th>
                     <th className="px-4 py-2"></th>
@@ -390,16 +463,38 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
                   {items.map((item, index) => (
                     <tr key={index}>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {getProductName(item.producto_id)}
+                        <div>
+                          {getProductName(item.producto_id)}
+                          {item.promocion_aplicada && (
+                            <div className="text-xs text-green-600 mt-1">
+                              🎁 {item.promocion_aplicada.nombre}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900">
-                        {formatCurrency(item.precio_unitario)}
+                        <div>
+                          {item.precio_original && item.descuento_unitario ? (
+                            <div>
+                              <span className="line-through text-gray-500">
+                                {formatCurrency(item.precio_original)}
+                              </span>
+                              <div className="font-medium text-green-600">
+                                {formatCurrency(item.precio_unitario)}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="font-medium">
+                              {formatCurrency(item.precio_unitario)}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900">
                         <div className="flex items-center">
                           <button
                             type="button"
-                            onClick={() => handleUpdateQuantity(index, item.cantidad - 1)}
+                            onClick={() => handleQuantityChange(index, item.cantidad - 1)}
                             className="text-gray-500 hover:text-gray-700 px-1"
                           >
                             -
@@ -407,14 +502,23 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
                           <span className="mx-2 w-8 text-center">{item.cantidad}</span>
                           <button
                             type="button"
-                            onClick={() => handleUpdateQuantity(index, item.cantidad + 1)}
+                            onClick={() => handleQuantityChange(index, item.cantidad + 1)}
                             className="text-gray-500 hover:text-gray-700 px-1"
                           >
                             +
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-900">
+                      <td className="px-4 py-2 text-sm">
+                        {item.descuento_unitario ? (
+                          <div className="text-green-600 font-medium">
+                            -{formatCurrency(item.descuento_unitario * item.cantidad)}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-900 font-medium">
                         {formatCurrency(item.cantidad * item.precio_unitario)}
                       </td>
                       <td className="px-4 py-2 text-right text-sm">
@@ -430,11 +534,33 @@ const SaleForm: React.FC<SaleFormProps> = ({ onSuccess, onCancel }) => {
                   ))}
                 </tbody>
                 <tfoot className="bg-gray-50">
+                  {totalDescuentos > 0 && (
+                    <>
+                      <tr>
+                        <td colSpan={4} className="px-4 py-2 text-sm text-gray-700 text-right">
+                          Subtotal ({totalItems} items):
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-900">
+                          {formatCurrency(subtotalSinDescuentos)}
+                        </td>
+                        <td></td>
+                      </tr>
+                      <tr>
+                        <td colSpan={4} className="px-4 py-2 text-sm text-green-700 text-right">
+                          Descuentos aplicados:
+                        </td>
+                        <td className="px-4 py-2 text-sm text-green-600 font-medium">
+                          -{formatCurrency(totalDescuentos)}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </>
+                  )}
                   <tr>
-                    <td colSpan={3} className="px-4 py-3 text-sm font-medium text-gray-700 text-right">
-                      Total ({totalItems} items):
+                    <td colSpan={4} className="px-4 py-3 text-sm font-medium text-gray-700 text-right">
+                      Total a pagar:
                     </td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                    <td className="px-4 py-3 text-lg font-bold text-gray-900">
                       {formatCurrency(totalVenta)}
                     </td>
                     <td></td>

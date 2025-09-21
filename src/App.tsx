@@ -5,7 +5,7 @@ import { ProtectedRoute } from './components/auth'
 import { Login } from './components/auth'
 import { Layout } from './components/layout'
 import SessionManager from './components/SessionManager'
-import { Dashboard, Inventory } from './pages'
+import { Dashboard, Inventory, Promotions } from './pages'
 import ProductList from './pages/products/ProductList'
 import CreateProduct from './pages/products/CreateProduct'
 import EditProduct from './pages/products/EditProduct'
@@ -78,6 +78,9 @@ function App() {
                     {/* Ventas - con sub-rutas */}
                     <Route path="/sales" element={<SalesList />} />
                     <Route path="/sales/create" element={<CreateSale />} />
+                    
+                    {/* Promociones */}
+                    <Route path="/promotions" element={<Promotions />} />
                     
                     {/* Inventario */}
                     <Route path="/inventory" element={<Inventory />} />

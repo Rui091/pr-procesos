@@ -155,6 +155,53 @@ export interface Database {
           created_at?: string
         }
       }
+      promocion: {
+        Row: {
+          id: number
+          org_id: string
+          nombre: string
+          descripcion: string | null
+          tipo_descuento: 'porcentaje' | 'monto_fijo' | '2x1' | 'buy_x_get_y'
+          valor_descuento: number
+          cantidad_minima: number
+          producto_id: number | null
+          cliente_id: number | null
+          fecha_inicio: string
+          fecha_fin: string | null
+          activo: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          org_id: string
+          nombre: string
+          descripcion?: string | null
+          tipo_descuento: 'porcentaje' | 'monto_fijo' | '2x1' | 'buy_x_get_y'
+          valor_descuento: number
+          cantidad_minima?: number
+          producto_id?: number | null
+          cliente_id?: number | null
+          fecha_inicio?: string
+          fecha_fin?: string | null
+          activo?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          org_id?: string
+          nombre?: string
+          descripcion?: string | null
+          tipo_descuento?: 'porcentaje' | 'monto_fijo' | '2x1' | 'buy_x_get_y'
+          valor_descuento?: number
+          cantidad_minima?: number
+          producto_id?: number | null
+          cliente_id?: number | null
+          fecha_inicio?: string
+          fecha_fin?: string | null
+          activo?: boolean
+          created_at?: string
+        }
+      }
     }
   }
 }
@@ -164,6 +211,7 @@ export type Cliente = Database['public']['Tables']['cliente']['Row']
 export type Producto = Database['public']['Tables']['producto']['Row']
 export type Venta = Database['public']['Tables']['venta']['Row']
 export type VentaItem = Database['public']['Tables']['venta_item']['Row']
+export type Promocion = Database['public']['Tables']['promocion']['Row']
 export type Org = Database['public']['Tables']['org']['Row']
 export type UserRole = 'admin' | 'manager' | 'cashier'
 
@@ -172,6 +220,7 @@ export type ClienteInsert = Database['public']['Tables']['cliente']['Insert']
 export type ProductoInsert = Database['public']['Tables']['producto']['Insert']
 export type VentaInsert = Database['public']['Tables']['venta']['Insert']
 export type VentaItemInsert = Database['public']['Tables']['venta_item']['Insert']
+export type PromocionInsert = Database['public']['Tables']['promocion']['Insert']
 
 // Tipo extendido para ventas con items
 export interface VentaConItems extends Venta {
