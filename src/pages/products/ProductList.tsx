@@ -1,14 +1,49 @@
 // src/pages/products/ProductList.tsx
-import React from 'react'
+import React, { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useProducts } from '../../hooks/useProducts'
 import { useAuth } from '../../contexts/AuthContext'
+import { useStockAlerts } from '../../hooks/useStockAlerts'
+import { ProductSearch } from '../../components/products'
 
 const ProductListPage: React.FC = () => {
-  const { products, loading, deleteProduct } = useProducts()
+  const { products, loading, deleteProduct, searchProducts } = useProducts()
   const { hasPermission } = useAuth()
+  const { alertCounts } = useStockAlerts(products)
+  
+  const [searchQuery, setSearchQuery] = useState('')
   
   const canManageProducts = hasPermission(['admin', 'manager'])
+
+  // Productos filtrados por búsqueda
+  const filteredProducts = useMemo(() => {
+    return searchQuery ? searchProducts(searchQuery) : products
+  }, [searchQuery, searchProducts, products])
+
+  // Estadísticas de productos filtrados
+  const stats = useMemo(() => {
+    const totalProducts = filteredProducts.length
+    const totalValue = filteredProducts.reduce((sum, product) => 
+      sum + ((product.precio || 0) * (product.stock || 0)), 0
+    )
+    const outOfStock = filteredProducts.filter(p => (p.stock || 0) === 0).length
+    const lowStock = filteredProducts.filter(p => (p.stock || 0) > 0 && (p.stock || 0) <= 10).length
+
+    return {
+      totalProducts,
+      totalValue,
+      outOfStock,
+      lowStock
+    }
+  }, [filteredProducts])
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0,
+    }).format(value)
+  }
 
   const handleDelete = async (id: number, name: string, forceDelete: boolean = false) => {
     if (!forceDelete && !window.confirm(`¿Estás seguro de que quieres eliminar el producto "${name}"?`)) {
@@ -82,9 +117,126 @@ const ProductListPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Barra de búsqueda avanzada */}
+      <div className="mb-6">
+        <ProductSearch
+          onSearch={setSearchQuery}
+          placeholder="Buscar productos por código o nombre..."
+          className="max-w-2xl"
+          debounceMs={300}
+          showFilters={true}
+        />
+      </div>
+
+      {/* Estadísticas de productos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
+          <div className="p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+              </div>
+              <div className="ml-4 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    Total Productos
+                  </dt>
+                  <dd className="text-lg font-semibold text-gray-900">
+                    {stats.totalProducts}
+                    {searchQuery && (
+                      <span className="text-sm text-gray-500 ml-1">
+                        de {products.length}
+                      </span>
+                    )}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
+          <div className="p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="ml-4 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    Valor Total Inventario
+                  </dt>
+                  <dd className="text-lg font-semibold text-gray-900">
+                    {formatCurrency(stats.totalValue)}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
+          <div className="p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.232 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="ml-4 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    Stock Bajo
+                  </dt>
+                  <dd className="text-lg font-semibold text-gray-900">
+                    {stats.lowStock}
+                    {alertCounts.critical + alertCounts.low + alertCounts.warning > 0 && (
+                      <span className="inline-flex items-center ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        {alertCounts.critical + alertCounts.low + alertCounts.warning} alertas
+                      </span>
+                    )}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
+          <div className="p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <div className="ml-4 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">
+                    Sin Stock
+                  </dt>
+                  <dd className="text-lg font-semibold text-gray-900">
+                    {stats.outOfStock}
+                    {stats.outOfStock > 0 && (
+                      <span className="inline-flex items-center ml-2 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        Reponer
+                      </span>
+                    )}
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Products Table */}
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        {products.length === 0 ? (
+        {filteredProducts.length === 0 ? (
           <div className="text-center py-12">
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
@@ -100,9 +252,14 @@ const ProductListPage: React.FC = () => {
                 d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" 
               />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay productos</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              {searchQuery ? 'No se encontraron productos' : 'No hay productos'}
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Comienza agregando tu primer producto.
+              {searchQuery 
+                ? `No hay productos que coincidan con "${searchQuery}"` 
+                : 'Comienza agregando tu primer producto.'
+              }
             </p>
             <div className="mt-6">
               <Link
@@ -118,7 +275,7 @@ const ProductListPage: React.FC = () => {
           </div>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {products.map((product) => (
+            {filteredProducts.map((product) => (
               <li key={product.id}>
                 <div className="px-4 py-4 sm:px-6 hover:bg-gray-50">
                   <div className="flex items-center justify-between">
